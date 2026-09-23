@@ -1,0 +1,50 @@
+name: AI-Powered Terraform CI/CD
+on: 
+  pull_request: # Runs on the PR to scan & suggest fixes
+  push:
+    branches:
+      - main # Runs on merge to deploy
+
+jobs:
+  terraform-job:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # --- CRITICAL: THE AUTHENTICACION BLOCK ---
+      # Injecting the secrets into this specific step
+      - name: Terraform init & Plan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        run: |
+          terraform init
+          terraform plan -no-color 
+
+      # --- THE AI REMEDIATION STEP ---
+      - name: Run AI Security Fixer
+        if: github.event_name == 'pull_request'
+        env: 
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python remediate_ai.py
+
+      # --- STAGE 2: APPLY (only after merge_ ---
+      - name: Terraform Apply
+        if: github.event_name == 'pus' && github.ref == 'refs/heads/main'
+        env: 
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }})
+        run: terraform apply -auto-approve

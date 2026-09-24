@@ -10,13 +10,13 @@ repo = os.getenv("GITHUB_REPOSITORY")
 pr_number = os.getenv("PR_NUMBER")
 
 # YOUR DEPLOYMENT NAME
-DEPLOY_NAME = "Agent742"
+DEPLOY_NAME = "lab-ai"
 
 
 def get_ai_fix(issue):
     # This celans the URL and adds the exact path from your succesful cURL test
     base_url = endpoint.split("/openai")[0].rstrip("/")
-    url = f"{base_url}/openai/deployments/{DEPLOY_NAME}/chat/completions?api-version=2024-02-15-preview"
+    url = f"{base_url}/openai/deployments/{DEPLOY_NAME}/chat/completions?api-version=2024-12-01-preview"
 
     headers = {"content-type": "application/json", "api-key": api_key}
     data = {

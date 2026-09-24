@@ -10,7 +10,7 @@ repo = os.getenv("GITHUB_REPOSITORY")
 pr_number = os.getenv("PR_NUMBER")
 
 # YOUR DEPLOYMENT NAME
-DEPLOY_NAME = "Agent742"
+DEPLOY_NAME = "lab-ai"
 
 
 def get_ai_fix(issue):

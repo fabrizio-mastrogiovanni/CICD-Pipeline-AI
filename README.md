@@ -1,4 +1,4 @@
-AI-Powered Terraform CI/CD Pipeline on Azure
+## AI-Powered Terraform CI/CD Pipeline on Azure
 
 A pull-request pipeline where AI reviews Terraform code for security issues before anything reaches Azure.
 

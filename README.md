@@ -1,58 +1,76 @@
-## AI-Powered Terraform CI/CD Pipeline on Azure
+# AI-Powered Terraform CI/CD Pipeline on Azure
 
-A pull-request pipeline where AI reviews Terraform code for security issues before anything reaches Azure.
+A pull-request pipeline where AI reviews Terraform code for security issues **before** anything reaches Azure.
 
-Every pull request (PR) runs terraform plan, then sends the infrastructure code to Azure OpenAI (GPT-4o). The AI posts a security fix as a comment on the PR. Infrastructure is only deployed (terraform apply) after the PR is merged into main.
+Every pull request (PR) runs `terraform plan`, then sends the infrastructure code to **Azure OpenAI (GPT-4o)**. The AI posts a security fix as a comment on the PR. Infrastructure is only deployed (`terraform apply`) after the PR is merged into `main`.
 
-Table of Contents
-Architecture
-Tech Stack
-Repository Structure
-Prerequisites
-Step-by-Step Build
-How the Pipeline Works
-Result
-Troubleshooting Log
-Lessons Learned
-Next Improvements
-Architecture
-git push
-Open pull request
-Merge
-push event
-Service Principal
-Terraform code
-Suggested fix
-Bot comment
-pull_request event
-GitHub Actions Runner
-Checkout code
-Setup Terraform
-terraform init + plan
-Run AI Security Fixerremediate_ai.py
-DeveloperVS Code
-Feature branch
-Pull Request
-Azure OpenAIGPT-4o
-main branch
-terraform apply
-AzureResource Group +Storage Account
+---
 
-Two stages:
+## Table of Contents
 
-Stage	Trigger	What happens
-Review	Pull request opened or updated	Plan the changes + AI security review posted as PR comment
-Deploy	Merge (push) to main	terraform apply creates the resources in Azure
-Tech Stack
-Tool	Purpose
-Terraform	Infrastructure as Code (IaC): defines Azure resources in code files
-Azure	Cloud platform where resources are created
-Azure Resource Manager (ARM)	Azure's deployment service; Terraform talks to it
-Azure OpenAI (GPT-4o)	AI model that reviews the Terraform code
-GitHub Actions	CI/CD (continuous integration / continuous delivery) engine that runs the pipeline
-Python	Script that calls the AI and posts the PR comment
-Git	Version control, feature-branch workflow
-Repository Structure
+1. [Architecture](#architecture)
+2. [Tech Stack](#tech-stack)
+3. [Repository Structure](#repository-structure)
+4. [Prerequisites](#prerequisites)
+5. [Step-by-Step Build](#step-by-step-build)
+6. [How the Pipeline Works](#how-the-pipeline-works)
+7. [Result](#result)
+8. [Troubleshooting Log](#troubleshooting-log)
+9. [Lessons Learned](#lessons-learned)
+10. [Next Improvements](#next-improvements)
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Dev[Developer<br/>VS Code] -->|git push| FB[Feature branch]
+    FB -->|Open pull request| PR[Pull Request]
+
+    subgraph GHA[GitHub Actions Runner]
+        direction TB
+        S1[Checkout code] --> S2[Setup Terraform]
+        S2 --> S3[terraform init + plan]
+        S3 --> S4[Run AI Security Fixer<br/>remediate_ai.py]
+    end
+
+    PR -->|pull_request event| GHA
+    S4 -->|Terraform code| AOAI[Azure OpenAI<br/>GPT-4o]
+    AOAI -->|Suggested fix| S4
+    S4 -->|Bot comment| PR
+
+    PR -->|Merge| Main[main branch]
+    Main -->|push event| Apply[terraform apply]
+    Apply -->|Service Principal| Azure[(Azure<br/>Resource Group +<br/>Storage Account)]
+```
+
+**Two stages:**
+
+| Stage | Trigger | What happens |
+|---|---|---|
+| **Review** | Pull request opened or updated | Plan the changes + AI security review posted as PR comment |
+| **Deploy** | Merge (push) to `main` | `terraform apply` creates the resources in Azure |
+
+---
+
+## Tech Stack
+
+| Tool | Purpose |
+|---|---|
+| **Terraform** | Infrastructure as Code (IaC): defines Azure resources in code files |
+| **Azure** | Cloud platform where resources are created |
+| **Azure Resource Manager (ARM)** | Azure's deployment service; Terraform talks to it |
+| **Azure OpenAI (GPT-4o)** | AI model that reviews the Terraform code |
+| **GitHub Actions** | CI/CD (continuous integration / continuous delivery) engine that runs the pipeline |
+| **Python** | Script that calls the AI and posts the PR comment |
+| **Git** | Version control, feature-branch workflow |
+
+---
+
+## Repository Structure
+
+```
 CICD-Pipeline/
 ├── .github/
 │   └── workflows/
@@ -63,18 +81,27 @@ CICD-Pipeline/
 ├── provider.tf                  # Azure provider configuration
 ├── variables.tf                 # Input variables
 └── remediate_ai.py              # AI security reviewer
-Prerequisites
-Azure subscription
-Azure CLI (command-line interface) installed: az --version
-Terraform installed: terraform --version
-Git + GitHub account
-An Azure OpenAI resource with a deployed model (this project uses gpt-4o)
-Step-by-Step Build
-Step 1 — Write the Terraform code
+```
 
-provider.tf — tells Terraform to use Azure.
+---
 
-hcl
+## Prerequisites
+
+- Azure subscription
+- Azure CLI (command-line interface) installed: `az --version`
+- Terraform installed: `terraform --version`
+- Git + GitHub account
+- An Azure OpenAI resource with a deployed model (this project uses `gpt-4o`)
+
+---
+
+## Step-by-Step Build
+
+### Step 1 — Write the Terraform code
+
+**`provider.tf`** — tells Terraform to use Azure.
+
+```hcl
 terraform {
   required_providers {
     azurerm = {
@@ -86,10 +113,11 @@ terraform {
 provider "azurerm" {
   features {}
 }
+```
 
-variables.tf — reusable inputs.
+**`variables.tf`** — reusable inputs.
 
-hcl
+```hcl
 variable "resource_group_name" {
   type    = string
   default = "rg-openai"
@@ -99,10 +127,11 @@ variable "location" {
   type    = string
   default = "East US"
 }
+```
 
-main.tf — a resource group and a storage account. The storage account is intentionally insecure (open to the public internet) so the AI has something to catch.
+**`main.tf`** — a resource group and a storage account. The storage account is **intentionally insecure** (open to the public internet) so the AI has something to catch.
 
-hcl
+```hcl
 resource "azurerm_resource_group" "lab" {
   name     = var.resource_group_name
   location = var.location
@@ -117,47 +146,61 @@ resource "azurerm_storage_account" "insecure" {
 
   public_network_access_enabled = true   # intentional security issue
 }
+```
 
 Check the code locally:
 
-bash
+```bash
 terraform fmt       # auto-format
 terraform init      # download the Azure provider
 terraform validate  # check for errors without creating anything
-Step 2 — Set up Git and .gitignore
+```
 
-Initialize the repo in the folder that contains .github (GitHub only reads workflows from .github/workflows at the repo root).
+---
 
-bash
+### Step 2 — Set up Git and `.gitignore`
+
+Initialize the repo in the folder that **contains** `.github` (GitHub only reads workflows from `.github/workflows` at the repo root).
+
+```bash
 git init
 git branch -M main
+```
 
-Create .gitignore so large and sensitive files are never uploaded:
+Create `.gitignore` so large and sensitive files are never uploaded:
 
+```
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
+```
 
-The .terraform/ folder contains the Azure provider binary (~215 MB). GitHub rejects files over 100 MB. State files (*.tfstate) can contain passwords and keys.
+> The `.terraform/` folder contains the Azure provider binary (~215 MB). GitHub rejects files over 100 MB.
+> State files (`*.tfstate`) can contain passwords and keys.
 
 Create an empty repo on GitHub, then connect and push:
 
-bash
+```bash
 git add .
 git commit -m "Initial commit"
 git remote add origin https://github.com/<your-user>/CICD-Pipeline-AI.git
 git push -u origin main
-Step 3 — Create a Service Principal
+```
 
-A Service Principal is a non-human "service account" that lets GitHub log in to Azure.
+---
 
-Client ID + Secret + TenantID
-Contributor role
-GitHub Actions
-Service Principal
-Azure Subscription
-bash
+### Step 3 — Create a Service Principal
+
+A **Service Principal** is a non-human "service account" that lets GitHub log in to Azure.
+
+```mermaid
+flowchart LR
+    GH[GitHub Actions] -->|Client ID + Secret + Tenant ID| SP[Service Principal]
+    SP -->|Contributor role| Sub[Azure Subscription]
+```
+
+```bash
 az login
 az account show --query id -o tsv   # prints your Subscription ID
 
@@ -165,45 +208,57 @@ az ad sp create-for-rbac \
   --name "github-cicd-ai" \
   --role Contributor \
   --scopes /subscriptions/<SUBSCRIPTION_ID>
+```
 
 The output maps to these values:
 
-Output field	GitHub secret
-appId	ARM_CLIENT_ID
-password	ARM_CLIENT_SECRET
-tenant	ARM_TENANT_ID
-(your subscription ID)	ARM_SUBSCRIPTION_ID
+| Output field | GitHub secret |
+|---|---|
+| `appId` | `ARM_CLIENT_ID` |
+| `password` | `ARM_CLIENT_SECRET` |
+| `tenant` | `ARM_TENANT_ID` |
+| *(your subscription ID)* | `ARM_SUBSCRIPTION_ID` |
 
-⚠️ The password is shown only once. Never commit it or share it in screenshots. If exposed, rotate it: az ad sp credential reset --id <appId>
+> ⚠️ The `password` is shown only once. Never commit it or share it in screenshots. If exposed, rotate it:
+> `az ad sp credential reset --id <appId>`
 
-Step 4 — Deploy the Azure OpenAI model
-In Microsoft Foundry (ai.azure.com), open your Azure OpenAI resource.
-Go to Models + endpoints → Deploy model and deploy gpt-4o.
-Note:
-Deployment name (this project: lab-ai) — the script must use this exact, case-sensitive name.
-Endpoint (Target URI)
-Key
-Step 5 — Add GitHub secrets
+---
 
-Repo → Settings → Secrets and variables → Actions → New repository secret
+### Step 4 — Deploy the Azure OpenAI model
 
-Secret	Source
-ARM_CLIENT_ID	Service Principal appId
-ARM_CLIENT_SECRET	Service Principal password
-ARM_TENANT_ID	Service Principal tenant
-ARM_SUBSCRIPTION_ID	Azure subscription ID
-AZURE_OPENAI_KEY	Foundry → deployment → Key
-AZURE_OPENAI_ENDPOINT	Foundry → deployment → Endpoint
+1. In **Microsoft Foundry** (ai.azure.com), open your Azure OpenAI resource.
+2. Go to **Models + endpoints → Deploy model** and deploy `gpt-4o`.
+3. Note:
+   - **Deployment name** (this project: `lab-ai`) — the script must use this exact, case-sensitive name.
+   - **Endpoint** (Target URI)
+   - **Key**
 
-GITHUB_TOKEN is created automatically by GitHub for every run.
+---
 
-Why ARM_? ARM = Azure Resource Manager. Terraform's Azure provider automatically reads environment variables that start with ARM_ to authenticate.
+### Step 5 — Add GitHub secrets
 
-Step 6 — Write the pipeline
+Repo → **Settings → Secrets and variables → Actions → New repository secret**
 
-.github/workflows/devsecops-ai.yml
+| Secret | Source |
+|---|---|
+| `ARM_CLIENT_ID` | Service Principal `appId` |
+| `ARM_CLIENT_SECRET` | Service Principal `password` |
+| `ARM_TENANT_ID` | Service Principal `tenant` |
+| `ARM_SUBSCRIPTION_ID` | Azure subscription ID |
+| `AZURE_OPENAI_KEY` | Foundry → deployment → Key |
+| `AZURE_OPENAI_ENDPOINT` | Foundry → deployment → Endpoint |
 
-yaml
+`GITHUB_TOKEN` is created automatically by GitHub for every run.
+
+> **Why `ARM_`?** ARM = Azure Resource Manager. Terraform's Azure provider automatically reads environment variables that start with `ARM_` to authenticate.
+
+---
+
+### Step 6 — Write the pipeline
+
+**`.github/workflows/devsecops-ai.yml`**
+
+```yaml
 name: AI-Powered Terraform CI/CD
 
 on:
@@ -266,13 +321,17 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform apply -auto-approve
-Step 7 — Write the AI reviewer
+```
 
-remediate_ai.py — reads credentials from environment variables, calls Azure OpenAI, and posts the answer as a PR comment.
+---
+
+### Step 7 — Write the AI reviewer
+
+**`remediate_ai.py`** — reads credentials from environment variables, calls Azure OpenAI, and posts the answer as a PR comment.
 
 Key parts:
 
-python
+```python
 import os
 import sys
 import requests
@@ -304,10 +363,16 @@ def get_ai_fix(issue):
 
     print(f"API ERROR: {response.status_code} - {response.text}")
     sys.exit(1)   # fail the step so errors are visible
+```
 
-The script then posts the result to the PR using the GitHub REST API: POST https://api.github.com/repos/{repo}/issues/{pr_number}/comments
+The script then posts the result to the PR using the GitHub REST API:
+`POST https://api.github.com/repos/{repo}/issues/{pr_number}/comments`
 
-Step 8 — Test with a feature branch
+---
+
+### Step 8 — Test with a feature branch
+
+```mermaid
 gitGraph
     commit id: "Initial commit"
     branch feature-branch-1
@@ -317,74 +382,98 @@ gitGraph
     commit id: "Fix deployment name"
     checkout main
     merge feature-branch-1 id: "Merge PR → terraform apply"
-bash
+```
+
+```bash
 git switch -c feature-branch-1
 # make a change, save
 git add .
 git commit -m "test ai pipeline"
 git push -u origin feature-branch-1
+```
 
-On GitHub: Pull requests → New pull request → base: main, compare: feature-branch-1.
+On GitHub: **Pull requests → New pull request → base: `main`, compare: `feature-branch-1`**.
 
-The pipeline runs automatically. When it finishes, the github-actions bot posts the AI Security Fix in the Conversation tab. Once reviewed, click Merge pull request to trigger terraform apply.
+The pipeline runs automatically. When it finishes, the `github-actions` bot posts the AI Security Fix in the **Conversation** tab. Once reviewed, click **Merge pull request** to trigger `terraform apply`.
 
-How the Pipeline Works
-Azure OpenAI
-Azure (ARM)
-Actions Runner
-GitHub
-Azure OpenAI
-Azure (ARM)
-Actions Runner
-GitHub
-Developer
-Push feature branch + open PR
-Trigger (pull_request)
-terraform plan (Service Principal)
-Planned changes
-Send Terraform code
-Security fix (HCL)
-Post PR comment
-Review + merge PR
-Trigger (push to main)
-terraform apply
-Resources created
-Developer
-Result
+---
 
-The AI detected that public_network_access_enabled = true exposes the storage account to the internet and suggested:
+## How the Pipeline Works
 
-hcl
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant GH as GitHub
+    participant Run as Actions Runner
+    participant AZ as Azure (ARM)
+    participant AI as Azure OpenAI
+
+    Dev->>GH: Push feature branch + open PR
+    GH->>Run: Trigger (pull_request)
+    Run->>AZ: terraform plan (Service Principal)
+    AZ-->>Run: Planned changes
+    Run->>AI: Send Terraform code
+    AI-->>Run: Security fix (HCL)
+    Run->>GH: Post PR comment
+    Dev->>GH: Review + merge PR
+    GH->>Run: Trigger (push to main)
+    Run->>AZ: terraform apply
+    AZ-->>Run: Resources created
+```
+
+---
+
+## Result
+
+The AI detected that `public_network_access_enabled = true` exposes the storage account to the internet and suggested:
+
+```hcl
 public_network_access_enabled = false
+```
 
-The fix appears on the PR before merge, so the issue can be corrected before it ever reaches Azure.
+The fix appears on the PR **before** merge, so the issue can be corrected before it ever reaches Azure.
 
-Troubleshooting Log
+---
+
+## Troubleshooting Log
 
 Real issues hit while building this project and how they were solved.
 
-Symptom	Cause	Fix
-fatal: not a git repository	git init never run, or run in wrong folder	Run git init in the folder containing .github
-Workflow never ran	.github not at repo root	Re-initialize repo one level up
-has no upstream branch	New branch not yet on GitHub	git push -u origin <branch>
-Push rejected: file is 215 MB	.terraform/ folder committed	Add .gitignore, git rm -r --cached .terraform, git commit --amend
-ModuleNotFoundError: No module named 'request'	Typo + library not installed on runner	import requests + pip install requests step
-Please run 'az login' in pipeline	ARM_* secrets missing	Create Service Principal, add GitHub secrets
-Merge conflict in variables.tf	Same lines edited on both branches (terraform fmt)	Resolved in GitHub editor, then git pull
-404 DeploymentNotFound	Wrong deployment name in script	Use exact name from Foundry (lab-ai)
-AI step green but no comment	Script printed error instead of failing	sys.exit(1) on API errors
-Push rejected: fetch first	Remote had a commit not on local	git pull --no-rebase, then git push
-Lessons Learned
-Pipelines should fail loudly. A green step that silently failed cost debugging time.
-Never commit generated or sensitive files. .gitignore goes in before the first commit.
-Names must match exactly. Secret names, deployment names, and branch names are all case-sensitive.
-Secrets stay out of code and screenshots. Rotate anything that leaks.
-Next Improvements
- Remote state backend — store Terraform state in an Azure Storage Account so resources are tracked between runs and terraform destroy works.
- OIDC (OpenID Connect) authentication — replace the client secret with short-lived tokens; no password to leak.
- Security scanner + AI — add Checkov or tfsec to find issues deterministically, then let the AI explain and fix them.
- Manual approval before apply — use a GitHub Environment with required reviewers instead of -auto-approve.
- Plan output in PR — post the terraform plan summary alongside the AI review.
-Author
+| Symptom | Cause | Fix |
+|---|---|---|
+| `fatal: not a git repository` | `git init` never run, or run in wrong folder | Run `git init` in the folder containing `.github` |
+| Workflow never ran | `.github` not at repo root | Re-initialize repo one level up |
+| `has no upstream branch` | New branch not yet on GitHub | `git push -u origin <branch>` |
+| Push rejected: file is 215 MB | `.terraform/` folder committed | Add `.gitignore`, `git rm -r --cached .terraform`, `git commit --amend` |
+| `ModuleNotFoundError: No module named 'request'` | Typo + library not installed on runner | `import requests` + `pip install requests` step |
+| `Please run 'az login'` in pipeline | `ARM_*` secrets missing | Create Service Principal, add GitHub secrets |
+| Merge conflict in `variables.tf` | Same lines edited on both branches (`terraform fmt`) | Resolved in GitHub editor, then `git pull` |
+| `404 DeploymentNotFound` | Wrong deployment name in script | Use exact name from Foundry (`lab-ai`) |
+| AI step green but no comment | Script printed error instead of failing | `sys.exit(1)` on API errors |
+| Push rejected: `fetch first` | Remote had a commit not on local | `git pull --no-rebase`, then `git push` |
 
-Fabrizio Mastrogiovanni — Cloud Engineer - LinkedIn: https://www.linkedin.com/in/fabrizio-mastrogiovanni-499335276/
+---
+
+## Lessons Learned
+
+- **Pipelines should fail loudly.** A green step that silently failed cost debugging time.
+- **Never commit generated or sensitive files.** `.gitignore` goes in before the first commit.
+- **Names must match exactly.** Secret names, deployment names, and branch names are all case-sensitive.
+- **Secrets stay out of code and screenshots.** Rotate anything that leaks.
+
+---
+
+## Next Improvements
+
+- [ ] **Remote state backend** — store Terraform state in an Azure Storage Account so resources are tracked between runs and `terraform destroy` works.
+- [ ] **OIDC (OpenID Connect) authentication** — replace the client secret with short-lived tokens; no password to leak.
+- [ ] **Security scanner + AI** — add Checkov or tfsec to find issues deterministically, then let the AI explain and fix them.
+- [ ] **Manual approval before apply** — use a GitHub Environment with required reviewers instead of `-auto-approve`.
+- [ ] **Plan output in PR** — post the `terraform plan` summary alongside the AI review.
+
+---
+
+## Author
+
+**Fabrizio Mastrogiovanni** — Cloud Engineer
+GitHub: [@fabrizio-mastrogiovanni](https://github.com/fabrizio-mastrogiovanni)
